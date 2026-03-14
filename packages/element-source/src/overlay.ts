@@ -6,12 +6,17 @@ const STORAGE_KEY = "element-source-overlay";
 const OVERLAY_ID = "element-source-overlay";
 const HIGHLIGHT_ID = "element-source-highlight";
 const LABEL_ID = "element-source-label";
+const TAB_ID = "element-source-tab";
+
+type DockSide = "none" | "left" | "right";
 
 interface OverlayState {
   enabled: boolean;
   x: number;
   y: number;
   logToConsole: boolean;
+  collapsed: boolean;
+  dock: DockSide;
 }
 
 const DEFAULT_STATE: OverlayState = {
@@ -19,7 +24,12 @@ const DEFAULT_STATE: OverlayState = {
   x: 16,
   y: 16,
   logToConsole: false,
+  collapsed: false,
+  dock: "none",
 };
+
+const DOCK_SNAP_DISTANCE = 40;
+const TAB_WIDTH = 24;
 
 const loadState = (): OverlayState => {
   try {
@@ -50,6 +60,25 @@ const createStyles = (): HTMLStyleElement => {
       user-select: none;
       -webkit-user-select: none;
       pointer-events: auto;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+
+    #${OVERLAY_ID}.es-collapsed {
+      pointer-events: none;
+      opacity: 0;
+      transform: scale(0.95);
+    }
+
+    #${OVERLAY_ID}.es-dock-left {
+      pointer-events: none;
+      opacity: 0;
+      transform: translateX(-100%);
+    }
+
+    #${OVERLAY_ID}.es-dock-right {
+      pointer-events: none;
+      opacity: 0;
+      transform: translateX(100%);
     }
 
     #${OVERLAY_ID} .es-panel {
@@ -121,7 +150,7 @@ const createStyles = (): HTMLStyleElement => {
       transform: translateX(18px);
     }
 
-    #${OVERLAY_ID} .es-log-btn {
+    #${OVERLAY_ID} .es-icon-btn {
       background: none;
       border: 1px solid #555;
       color: #999;
@@ -131,9 +160,15 @@ const createStyles = (): HTMLStyleElement => {
       font-size: 10px;
       font-family: inherit;
       transition: all 0.15s;
+      line-height: 1.4;
     }
 
-    #${OVERLAY_ID} .es-log-btn.es-on {
+    #${OVERLAY_ID} .es-icon-btn:hover {
+      border-color: #888;
+      color: #ccc;
+    }
+
+    #${OVERLAY_ID} .es-icon-btn.es-on {
       border-color: #ff9800;
       color: #ff9800;
     }
@@ -171,6 +206,64 @@ const createStyles = (): HTMLStyleElement => {
     #${OVERLAY_ID} .es-separator {
       color: #555;
       margin: 2px 0;
+    }
+
+    #${TAB_ID} {
+      position: fixed;
+      z-index: 2147483647;
+      pointer-events: auto;
+      cursor: pointer;
+      background: #16213e;
+      border: 1px solid #333;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: ${TAB_WIDTH}px;
+      height: 80px;
+      transition: opacity 0.2s, transform 0.2s, background 0.15s;
+      writing-mode: vertical-lr;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 10px;
+      font-weight: 600;
+      color: #a0c4ff;
+      letter-spacing: 1px;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    #${TAB_ID}:hover {
+      background: #1a1a2e;
+      color: #c0d8ff;
+    }
+
+    #${TAB_ID}.es-tab-left {
+      left: 0;
+      border-radius: 0 6px 6px 0;
+      border-left: none;
+    }
+
+    #${TAB_ID}.es-tab-right {
+      right: 0;
+      border-radius: 6px 0 0 6px;
+      border-right: none;
+    }
+
+    #${TAB_ID}.es-tab-hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #${TAB_ID}.es-tab-left.es-tab-hidden {
+      transform: translateX(-100%);
+    }
+
+    #${TAB_ID}.es-tab-right.es-tab-hidden {
+      transform: translateX(100%);
+    }
+
+    #${TAB_ID}.es-active {
+      color: #4caf50;
     }
 
     #${HIGHLIGHT_ID} {
@@ -247,6 +340,12 @@ const init = (): void => {
   label.style.display = "none";
   document.body.appendChild(label);
 
+  // Create edge tab (visible when collapsed/docked)
+  const tab = document.createElement("div");
+  tab.id = TAB_ID;
+  tab.textContent = "ES";
+  document.body.appendChild(tab);
+
   // Create overlay panel
   const overlay = document.createElement("div");
   overlay.id = OVERLAY_ID;
@@ -258,8 +357,9 @@ const init = (): void => {
       <div class="es-header">
         <span class="es-title">element-source</span>
         <div class="es-controls">
-          <button class="es-log-btn ${state.logToConsole ? "es-on" : ""}" title="Log to console">log</button>
+          <button class="es-icon-btn ${state.logToConsole ? "es-on" : ""}" data-action="log" title="Log to console">log</button>
           <button class="es-toggle ${state.enabled ? "es-on" : ""}" title="Toggle inspection"></button>
+          <button class="es-icon-btn" data-action="collapse" title="Collapse panel">&times;</button>
         </div>
       </div>
       <div class="es-body"></div>
@@ -271,16 +371,74 @@ const init = (): void => {
 
   const header = overlay.querySelector(".es-header") as HTMLElement;
   const toggle = overlay.querySelector(".es-toggle") as HTMLButtonElement;
-  const logBtn = overlay.querySelector(".es-log-btn") as HTMLButtonElement;
+  const logBtn = overlay.querySelector('[data-action="log"]') as HTMLButtonElement;
+  const collapseBtn = overlay.querySelector('[data-action="collapse"]') as HTMLButtonElement;
   const body = overlay.querySelector(".es-body") as HTMLElement;
 
-  // Drag logic
+  // --- Collapse / Dock state management ---
+
+  const applyVisualState = (): void => {
+    overlay.classList.remove("es-collapsed", "es-dock-left", "es-dock-right");
+    tab.classList.remove("es-tab-left", "es-tab-right", "es-tab-hidden", "es-active");
+
+    if (state.enabled) tab.classList.add("es-active");
+
+    if (state.collapsed) {
+      if (state.dock === "left") {
+        overlay.classList.add("es-dock-left");
+        tab.classList.add("es-tab-left");
+        tab.style.top = `${state.y}px`;
+      } else if (state.dock === "right") {
+        overlay.classList.add("es-dock-right");
+        tab.classList.add("es-tab-right");
+        tab.style.top = `${state.y}px`;
+      } else {
+        overlay.classList.add("es-collapsed");
+        tab.classList.add("es-tab-right");
+        tab.style.top = `${state.y}px`;
+        state.dock = "right";
+        saveState(state);
+      }
+    } else {
+      tab.classList.add("es-tab-hidden");
+      if (state.dock === "left") tab.classList.add("es-tab-left");
+      else tab.classList.add("es-tab-right");
+    }
+  };
+
+  const collapse = (): void => {
+    state.collapsed = true;
+    // Determine dock side based on current position
+    const midpoint = window.innerWidth / 2;
+    state.dock = state.x + 110 < midpoint ? "left" : "right";
+    saveState(state);
+    applyVisualState();
+  };
+
+  const expand = (): void => {
+    state.collapsed = false;
+    saveState(state);
+    applyVisualState();
+  };
+
+  applyVisualState();
+
+  // Tab click to expand
+  tab.addEventListener("click", expand);
+
+  // Collapse button
+  collapseBtn.addEventListener("click", collapse);
+
+  // --- Drag logic ---
   let dragging = false;
   let dragOffsetX = 0;
   let dragOffsetY = 0;
 
+  const isButton = (target: EventTarget | null): boolean =>
+    target === toggle || target === logBtn || target === collapseBtn;
+
   const onMouseDown = (event: MouseEvent): void => {
-    if (event.target === toggle || event.target === logBtn) return;
+    if (isButton(event.target)) return;
     dragging = true;
     dragOffsetX = event.clientX - overlay.offsetLeft;
     dragOffsetY = event.clientY - overlay.offsetTop;
@@ -295,23 +453,55 @@ const init = (): void => {
     overlay.style.top = `${y}px`;
     state.x = x;
     state.y = y;
-    saveState(state);
+
+    // Show dock hint — highlight the edge tab when near a side
+    tab.classList.remove("es-tab-hidden", "es-tab-left", "es-tab-right");
+    if (x <= DOCK_SNAP_DISTANCE) {
+      tab.classList.add("es-tab-left");
+      tab.style.top = `${y}px`;
+    } else if (x + overlay.offsetWidth >= window.innerWidth - DOCK_SNAP_DISTANCE) {
+      tab.classList.add("es-tab-right");
+      tab.style.top = `${y}px`;
+    } else {
+      tab.classList.add("es-tab-hidden", "es-tab-right");
+    }
   };
 
   const onMouseUp = (): void => {
+    if (!dragging) return;
     dragging = false;
+
+    // Snap to dock if near edge
+    if (state.x <= DOCK_SNAP_DISTANCE) {
+      state.dock = "left";
+      state.collapsed = true;
+      saveState(state);
+      applyVisualState();
+    } else if (state.x + overlay.offsetWidth >= window.innerWidth - DOCK_SNAP_DISTANCE) {
+      state.dock = "right";
+      state.collapsed = true;
+      saveState(state);
+      applyVisualState();
+    } else {
+      state.dock = "none";
+      saveState(state);
+      applyVisualState();
+    }
   };
 
   header.addEventListener("mousedown", onMouseDown);
   document.addEventListener("mousemove", onMouseMove);
   document.addEventListener("mouseup", onMouseUp);
 
-  // Toggle
+  // Toggle inspection
   toggle.addEventListener("click", () => {
     state.enabled = !state.enabled;
     toggle.classList.toggle("es-on", state.enabled);
     saveState(state);
-    if (!state.enabled) {
+    if (state.enabled) {
+      tab.classList.add("es-active");
+    } else {
+      tab.classList.remove("es-active");
       highlight.style.display = "none";
       label.style.display = "none";
       body.innerHTML = "";
@@ -333,6 +523,7 @@ const init = (): void => {
     element.id === OVERLAY_ID ||
     element.id === HIGHLIGHT_ID ||
     element.id === LABEL_ID ||
+    element.id === TAB_ID ||
     element.closest(`#${OVERLAY_ID}`) !== null;
 
   const updateHighlight = (target: Element): void => {
@@ -399,7 +590,9 @@ const init = (): void => {
         resolveElementInfo(target).then((info) => {
           if (lastTarget !== target) return;
 
-          body.innerHTML = formatInfo(info);
+          if (!state.collapsed) {
+            body.innerHTML = formatInfo(info);
+          }
           updateLabel(target, formatShortLabel(info), mouseX, mouseY);
 
           if (state.logToConsole) {
@@ -416,7 +609,6 @@ const init = (): void => {
               "color: #4caf50; font-weight: bold",
               "color: inherit",
             );
-            // eslint-disable-next-line no-debugger
             if (typeof console.groupCollapsed === "function") {
               console.groupCollapsed("[element-source] Element details");
               console.log("Element:", target);
@@ -448,11 +640,13 @@ const init = (): void => {
         : info.source.filePath;
 
       navigator.clipboard.writeText(location).then(() => {
-        const original = body.innerHTML;
-        body.innerHTML = `<span style="color: #4caf50">Copied: ${escapeHtml(location)}</span>`;
-        setTimeout(() => {
-          body.innerHTML = original;
-        }, 1500);
+        if (!state.collapsed) {
+          const original = body.innerHTML;
+          body.innerHTML = `<span style="color: #4caf50">Copied: ${escapeHtml(location)}</span>`;
+          setTimeout(() => {
+            body.innerHTML = original;
+          }, 1500);
+        }
       });
     });
   }, true);
