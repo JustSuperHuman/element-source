@@ -16,4 +16,12 @@ export default defineConfig([
     sourcemap: true,
     minify: true,
   },
+  {
+    entry: { overlay: "src/overlay.ts" },
+    format: ["iife"],
+    globalName: "ElementSourceOverlay",
+    outDir: "dist",
+    sourcemap: true,
+    minify: true,
+  },
 ]);

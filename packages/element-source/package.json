@@ -16,7 +16,8 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
-    }
+    },
+    "./overlay": "./dist/overlay.global.js"
   },
   "scripts": {
     "build": "tsup",
