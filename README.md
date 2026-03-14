@@ -1,128 +1,101 @@
-# element-source
+# element-source overlay
 
-Get the source file location of any DOM element. Works with React, Vue, Svelte, and Solid.
+A fork of [element-source](https://github.com/AikidoSec/element-source) with a built-in browser overlay for inspecting DOM elements. Drop in a single `<script>` tag and get a draggable, collapsible panel that shows you the source file, component name, and line number of any element you hover over. No install, no config, no build step.
 
-> I originally built this to power [React Grab](https://www.react-grab.com/blog/intro), a way to select elements in the browser and give the source as context to coding agents. Agents are incredibly good and [token efficient](https://www.react-grab.com/blog/intro) at using file sources. Now anyone can use what makes React Grab possible.
+https://github.com/user-attachments/assets/demo.mp4
 
-## Installation
+## Usage
 
-```bash
-npm install element-source
+Add the script to your page. That's it.
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/JustSuperHuman/element-source@main/packages/element-source/dist/overlay.global.js"></script>
 ```
 
-## Quick Start
+### Next.js
 
-Pass any DOM element to `resolveElementInfo` to get its source file location, component name, and full component stack.
+Use alongside [react-scan](https://github.com/aidenybai/react-scan) for full dev-mode inspection. Only load in development:
+
+```tsx
+import Script from "next/script";
+
+const isDevelopment = process.env.NODE_ENV === "development";
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html>
+      <body>
+        {isDevelopment && (
+            <Script
+              async
+              crossOrigin="anonymous"
+              src="//cdn.jsdelivr.net/gh/JustSuperHuman/element-source@main/packages/element-source/dist/overlay.global.js"
+              strategy="afterInteractive"
+            />
+        )}
+        {children}
+      </body>
+    </html>
+  );
+}
+```
+
+### Plain HTML
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/JustSuperHuman/element-source@main/packages/element-source/dist/overlay.global.js"></script>
+```
+
+### Vite / Webpack / Any bundler
 
 ```ts
-import { resolveElementInfo } from "element-source";
-
-const info = await resolveElementInfo(element);
-// {
-//   tagName: "button",
-//   componentName: "App",
-//   source: { filePath: "src/App.tsx", lineNumber: 42, columnNumber: 10, componentName: "App" },
-//   stack: [...]
-// }
+import "element-source/overlay";
 ```
 
+## Features
+
+- **One script tag** — no npm install, no imports, no build config
+- **Draggable panel** — move it anywhere on screen, position is remembered
+- **Collapse to edge** — click the `x` button or drag the panel to the left/right edge to dock it as a slim tab. Click the tab to expand
+- **Toggle inspection** — flip the switch to enable/disable element highlighting
+- **Hover to inspect** — highlights the element under your cursor with a green border and shows its tag name, component, source file, and line number
+- **Click to copy** — click any element while inspecting to copy its source location to your clipboard
+- **Console logging** — toggle the `log` button to also output element info to your browser console with collapsible details
+- **Persistent state** — enabled/disabled, panel position, dock side, and log toggle are all saved in `localStorage`
+- **Framework support** — works with React, Vue, Svelte, and Solid
+
+## How it works
+
+This is a fork of [element-source](https://github.com/AikidoSec/element-source) which resolves source file locations for DOM elements across React, Vue, Svelte, and Solid. This fork adds a self-contained browser overlay (`overlay.global.js`) that bundles the entire library into a single IIFE script. It auto-initializes on page load — no API calls needed.
+
+## Building from source
+
+```bash
+pnpm install
+cd packages/element-source
+pnpm tsup
+```
+
+Output: `packages/element-source/dist/overlay.global.js`
 
 ## API
 
-### `resolveElementInfo(node: object): Promise<ElementInfo>`
-
-Returns complete metadata: tag name, component name, source location, and full stack.
+The full programmatic API from the original library is still available if you need it:
 
 ```ts
-const info = await resolveElementInfo(document.querySelector("#root button"));
+import { resolveElementInfo, resolveSource, resolveStack, resolveComponentName } from "element-source";
+
+const info = await resolveElementInfo(element);
 // {
 //   tagName: "button",
 //   componentName: "Counter",
 //   source: { filePath: "src/Counter.tsx", lineNumber: 12, columnNumber: 5, componentName: "Counter" },
-//   stack: [
-//     { filePath: "src/Counter.tsx", lineNumber: 12, columnNumber: 5, componentName: "Counter" },
-//     { filePath: "src/App.tsx", lineNumber: 8, columnNumber: 3, componentName: "App" },
-//   ]
+//   stack: [...]
 // }
 ```
 
-### `resolveSource(node: object): Promise<ElementSourceInfo | null>`
+See the [original README](https://github.com/AikidoSec/element-source) for the full API reference.
 
-Returns the primary source location.
+## License
 
-```ts
-const source = await resolveSource(element);
-// { filePath: "src/Counter.tsx", lineNumber: 12, columnNumber: 5, componentName: "Counter" }
-```
-
-### `resolveStack(node: object): Promise<ElementSourceInfo[]>`
-
-Returns the full stack of source frames (React + framework combined).
-
-```ts
-const stack = await resolveStack(element);
-// [
-//   { filePath: "src/Counter.tsx", lineNumber: 12, columnNumber: 5, componentName: "Counter" },
-//   { filePath: "src/App.tsx", lineNumber: 8, columnNumber: 3, componentName: "App" },
-// ]
-```
-
-### `resolveComponentName(node: object): Promise<string | null>`
-
-Returns the nearest user-defined component name.
-
-```ts
-const name = await resolveComponentName(element);
-// "Counter"
-```
-
-### `createSourceResolver(options?: ResolverOptions)`
-
-Creates a resolver with custom framework resolvers.
-
-```ts
-import { createSourceResolver, svelteResolver, vueResolver } from "element-source";
-
-const { resolveSource, resolveStack, resolveComponentName, resolveElementInfo } =
-  createSourceResolver({
-    resolvers: [svelteResolver, vueResolver],
-  });
-
-const info = await resolveElementInfo(element);
-```
-
-### `formatStackFrame(frame: ElementSourceInfo): string`
-
-Formats a single source frame as a stack-trace-style string.
-
-```ts
-const frame = { filePath: "src/App.tsx", lineNumber: 42, columnNumber: 10, componentName: "App" };
-formatStackFrame(frame);
-// "\n  in App (at src/App.tsx:42:10)"
-```
-
-### `formatStack(stack: ElementSourceInfo[], maxLines?: number): string`
-
-Formats an array of source frames.
-
-```ts
-const stack = [
-  { filePath: "src/Counter.tsx", lineNumber: 12, columnNumber: 5, componentName: "Counter" },
-  { filePath: "src/App.tsx", lineNumber: 8, columnNumber: 3, componentName: "App" },
-];
-formatStack(stack);
-// "\n  in Counter (at src/Counter.tsx:12:5)\n  in App (at src/App.tsx:8:3)"
-
-formatStack(stack, 1);
-// "\n  in Counter (at src/Counter.tsx:12:5)"
-```
-
-### `getTagName(node: object): string`
-
-Returns the tag name from any host instance. Handles DOM `Element.tagName`, Ink `nodeName`, and falls back to `""`.
-
-```ts
-getTagName(document.createElement("div")); // "div"
-getTagName({ nodeName: "ink-text" });       // "ink-text"
-getTagName({});                             // ""
-```
+MIT
