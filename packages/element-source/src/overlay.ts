@@ -1,35 +1,21 @@
 import { resolveElementInfo } from "./resolve.js";
-import { formatStackFrame } from "./utils/format-stack-frame.js";
 import type { ElementInfo } from "./types.js";
 
 const STORAGE_KEY = "element-source-overlay";
-const OVERLAY_ID = "element-source-overlay";
+const PILL_ID = "element-source-pill";
 const HIGHLIGHT_ID = "element-source-highlight";
 const LABEL_ID = "element-source-label";
-const TAB_ID = "element-source-tab";
-
-type DockSide = "none" | "left" | "right";
+const TOAST_ID = "element-source-toast";
 
 interface OverlayState {
-  enabled: boolean;
   x: number;
   y: number;
-  logToConsole: boolean;
-  collapsed: boolean;
-  dock: DockSide;
 }
 
 const DEFAULT_STATE: OverlayState = {
-  enabled: false,
   x: 16,
   y: 16,
-  logToConsole: false,
-  collapsed: false,
-  dock: "none",
 };
-
-const DOCK_SNAP_DISTANCE = 40;
-const TAB_WIDTH = 24;
 
 const loadState = (): OverlayState => {
   try {
@@ -52,218 +38,44 @@ const saveState = (state: OverlayState): void => {
 const createStyles = (): HTMLStyleElement => {
   const style = document.createElement("style");
   style.textContent = `
-    #${OVERLAY_ID} {
+    #${PILL_ID} {
       position: fixed;
       z-index: 2147483647;
-      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-      font-size: 12px;
-      user-select: none;
-      -webkit-user-select: none;
-      pointer-events: auto;
-      transition: opacity 0.2s, transform 0.2s;
-    }
-
-    #${OVERLAY_ID}.es-collapsed {
-      pointer-events: none;
-      opacity: 0;
-      transform: scale(0.95);
-    }
-
-    #${OVERLAY_ID}.es-dock-left {
-      pointer-events: none;
-      opacity: 0;
-      transform: translateX(-100%);
-    }
-
-    #${OVERLAY_ID}.es-dock-right {
-      pointer-events: none;
-      opacity: 0;
-      transform: translateX(100%);
-    }
-
-    #${OVERLAY_ID} .es-panel {
-      background: #1a1a2e;
-      color: #e0e0e0;
-      border: 1px solid #333;
-      border-radius: 8px;
-      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-      overflow: hidden;
-      min-width: 220px;
-    }
-
-    #${OVERLAY_ID} .es-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 6px 10px;
-      background: #16213e;
-      cursor: grab;
-      gap: 8px;
-    }
-
-    #${OVERLAY_ID} .es-header:active {
-      cursor: grabbing;
-    }
-
-    #${OVERLAY_ID} .es-title {
-      font-weight: 600;
-      font-size: 11px;
-      color: #a0c4ff;
-      white-space: nowrap;
-    }
-
-    #${OVERLAY_ID} .es-controls {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    #${OVERLAY_ID} .es-toggle {
-      position: relative;
-      width: 36px;
-      height: 18px;
-      background: #444;
-      border-radius: 9px;
-      cursor: pointer;
-      transition: background 0.2s;
-      border: none;
-      padding: 0;
-    }
-
-    #${OVERLAY_ID} .es-toggle.es-on {
-      background: #4caf50;
-    }
-
-    #${OVERLAY_ID} .es-toggle::after {
-      content: "";
-      position: absolute;
-      top: 2px;
-      left: 2px;
-      width: 14px;
-      height: 14px;
-      background: #fff;
-      border-radius: 50%;
-      transition: transform 0.2s;
-    }
-
-    #${OVERLAY_ID} .es-toggle.es-on::after {
-      transform: translateX(18px);
-    }
-
-    #${OVERLAY_ID} .es-icon-btn {
-      background: none;
-      border: 1px solid #555;
-      color: #999;
-      border-radius: 4px;
-      padding: 1px 5px;
-      cursor: pointer;
-      font-size: 10px;
-      font-family: inherit;
-      transition: all 0.15s;
-      line-height: 1.4;
-    }
-
-    #${OVERLAY_ID} .es-icon-btn:hover {
-      border-color: #888;
-      color: #ccc;
-    }
-
-    #${OVERLAY_ID} .es-icon-btn.es-on {
-      border-color: #ff9800;
-      color: #ff9800;
-    }
-
-    #${OVERLAY_ID} .es-body {
-      padding: 8px 10px;
-      max-height: 200px;
-      overflow-y: auto;
-      line-height: 1.5;
-    }
-
-    #${OVERLAY_ID} .es-body:empty::after {
-      content: "Hover over elements...";
-      color: #666;
-      font-style: italic;
-    }
-
-    #${OVERLAY_ID} .es-tag {
-      color: #ff79c6;
-    }
-
-    #${OVERLAY_ID} .es-component {
-      color: #50fa7b;
-    }
-
-    #${OVERLAY_ID} .es-file {
-      color: #8be9fd;
-      word-break: break-all;
-    }
-
-    #${OVERLAY_ID} .es-line {
-      color: #ffb86c;
-    }
-
-    #${OVERLAY_ID} .es-separator {
-      color: #555;
-      margin: 2px 0;
-    }
-
-    #${TAB_ID} {
-      position: fixed;
-      z-index: 2147483647;
-      pointer-events: auto;
-      cursor: pointer;
-      background: #16213e;
-      border: 1px solid #333;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       display: flex;
       align-items: center;
       justify-content: center;
-      width: ${TAB_WIDTH}px;
-      height: 80px;
-      transition: opacity 0.2s, transform 0.2s, background 0.15s;
-      writing-mode: vertical-lr;
-      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-      font-size: 10px;
-      font-weight: 600;
-      color: #a0c4ff;
-      letter-spacing: 1px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #16213e;
+      border: 1.5px solid #333;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+      cursor: grab;
       user-select: none;
       -webkit-user-select: none;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 10px;
+      font-weight: 700;
+      color: #a0c4ff;
+      transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+      pointer-events: auto;
     }
 
-    #${TAB_ID}:hover {
+    #${PILL_ID}:hover {
       background: #1a1a2e;
-      color: #c0d8ff;
+      border-color: #555;
     }
 
-    #${TAB_ID}.es-tab-left {
-      left: 0;
-      border-radius: 0 6px 6px 0;
-      border-left: none;
+    #${PILL_ID}:active {
+      cursor: grabbing;
     }
 
-    #${TAB_ID}.es-tab-right {
-      right: 0;
-      border-radius: 6px 0 0 6px;
-      border-right: none;
-    }
-
-    #${TAB_ID}.es-tab-hidden {
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    #${TAB_ID}.es-tab-left.es-tab-hidden {
-      transform: translateX(-100%);
-    }
-
-    #${TAB_ID}.es-tab-right.es-tab-hidden {
-      transform: translateX(100%);
-    }
-
-    #${TAB_ID}.es-active {
+    #${PILL_ID}.es-active {
+      background: #1b3a1b;
+      border-color: #4caf50;
       color: #4caf50;
+      box-shadow: 0 0 12px rgba(76, 175, 80, 0.3);
+      cursor: crosshair;
     }
 
     #${HIGHLIGHT_ID} {
@@ -271,7 +83,7 @@ const createStyles = (): HTMLStyleElement => {
       z-index: 2147483646;
       pointer-events: none;
       border: 2px solid #4caf50;
-      background: rgba(76, 175, 80, 0.1);
+      background: rgba(76, 175, 80, 0.08);
       border-radius: 2px;
       transition: all 0.05s ease-out;
     }
@@ -284,12 +96,46 @@ const createStyles = (): HTMLStyleElement => {
       color: #e0e0e0;
       font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
       font-size: 11px;
-      padding: 3px 8px;
-      border-radius: 4px;
+      padding: 4px 10px;
+      border-radius: 6px;
       border: 1px solid #333;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       white-space: nowrap;
+      max-width: 500px;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
+
+    #${TOAST_ID} {
+      position: fixed;
+      z-index: 2147483647;
+      pointer-events: none;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.5;
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 1px solid #333;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      max-width: 420px;
+      word-break: break-all;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity 0.2s, transform 0.2s;
+    }
+
+    #${TOAST_ID}.es-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    #${TOAST_ID} .es-tag { color: #ff79c6; }
+    #${TOAST_ID} .es-component { color: #50fa7b; }
+    #${TOAST_ID} .es-file { color: #8be9fd; }
+    #${TOAST_ID} .es-line { color: #ffb86c; }
+    #${TOAST_ID} .es-copied { color: #4caf50; font-size: 10px; margin-top: 2px; }
   `;
   return style;
 };
@@ -297,234 +143,165 @@ const createStyles = (): HTMLStyleElement => {
 const escapeHtml = (str: string): string =>
   str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-const formatInfo = (info: ElementInfo): string => {
-  const parts: string[] = [];
-
-  parts.push(`<span class="es-tag">&lt;${escapeHtml(info.tagName)}&gt;</span>`);
-
+const formatToast = (info: ElementInfo, copied: string | null): string => {
+  const lines: string[] = [];
+  lines.push(`<span class="es-tag">&lt;${escapeHtml(info.tagName)}&gt;</span>`);
   if (info.componentName) {
-    parts.push(`<span class="es-component">${escapeHtml(info.componentName)}</span>`);
+    lines.push(`<span class="es-component">${escapeHtml(info.componentName)}</span>`);
   }
-
   if (info.source) {
     const loc = info.source.lineNumber
       ? `<span class="es-file">${escapeHtml(info.source.filePath)}</span>:<span class="es-line">${info.source.lineNumber}</span>`
       : `<span class="es-file">${escapeHtml(info.source.filePath)}</span>`;
-    parts.push(loc);
+    lines.push(loc);
   }
-
-  return parts.join("<br>");
+  if (copied) {
+    lines.push(`<span class="es-copied">copied to clipboard</span>`);
+  }
+  return lines.join("<br>");
 };
 
 const formatShortLabel = (info: ElementInfo): string => {
-  const tag = `<${info.tagName}>`;
-  if (info.componentName) return `${info.componentName} ${tag}`;
-  return tag;
+  const parts: string[] = [];
+  if (info.componentName) parts.push(info.componentName);
+  parts.push(`<${info.tagName}>`);
+  if (info.source) {
+    const file = info.source.filePath.split("/").pop() ?? info.source.filePath;
+    parts.push(info.source.lineNumber ? `${file}:${info.source.lineNumber}` : file);
+  }
+  return parts.join(" ");
 };
 
 const init = (): void => {
   if (typeof document === "undefined") return;
-  if (document.getElementById(OVERLAY_ID)) return;
+  if (document.getElementById(PILL_ID)) return;
 
   const state = loadState();
+  let inspecting = false;
 
-  // Create highlight element
+  // Highlight box
   const highlight = document.createElement("div");
   highlight.id = HIGHLIGHT_ID;
   highlight.style.display = "none";
   document.body.appendChild(highlight);
 
-  // Create floating label near cursor
+  // Label near cursor
   const label = document.createElement("div");
   label.id = LABEL_ID;
   label.style.display = "none";
   document.body.appendChild(label);
 
-  // Create edge tab (visible when collapsed/docked)
-  const tab = document.createElement("div");
-  tab.id = TAB_ID;
-  tab.textContent = "ES";
-  document.body.appendChild(tab);
+  // Toast for showing result after click
+  const toast = document.createElement("div");
+  toast.id = TOAST_ID;
+  document.body.appendChild(toast);
 
-  // Create overlay panel
-  const overlay = document.createElement("div");
-  overlay.id = OVERLAY_ID;
-  overlay.style.left = `${state.x}px`;
-  overlay.style.top = `${state.y}px`;
+  // Pill button
+  const pill = document.createElement("div");
+  pill.id = PILL_ID;
+  pill.textContent = "ES";
+  pill.style.left = `${state.x}px`;
+  pill.style.top = `${state.y}px`;
+  document.body.appendChild(pill);
 
-  overlay.innerHTML = `
-    <div class="es-panel">
-      <div class="es-header">
-        <span class="es-title">element-source</span>
-        <div class="es-controls">
-          <button class="es-icon-btn ${state.logToConsole ? "es-on" : ""}" data-action="log" title="Log to console">log</button>
-          <button class="es-toggle ${state.enabled ? "es-on" : ""}" title="Toggle inspection"></button>
-          <button class="es-icon-btn" data-action="collapse" title="Collapse panel">&times;</button>
-        </div>
-      </div>
-      <div class="es-body"></div>
-    </div>
-  `;
-
-  document.body.appendChild(overlay);
   document.head.appendChild(createStyles());
 
-  const header = overlay.querySelector(".es-header") as HTMLElement;
-  const toggle = overlay.querySelector(".es-toggle") as HTMLButtonElement;
-  const logBtn = overlay.querySelector('[data-action="log"]') as HTMLButtonElement;
-  const collapseBtn = overlay.querySelector('[data-action="collapse"]') as HTMLButtonElement;
-  const body = overlay.querySelector(".es-body") as HTMLElement;
+  // --- State helpers ---
 
-  // --- Collapse / Dock state management ---
+  let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const applyVisualState = (): void => {
-    overlay.classList.remove("es-collapsed", "es-dock-left", "es-dock-right");
-    tab.classList.remove("es-tab-left", "es-tab-right", "es-tab-hidden", "es-active");
+  const activate = (): void => {
+    inspecting = true;
+    pill.classList.add("es-active");
+  };
 
-    if (state.enabled) tab.classList.add("es-active");
+  const deactivate = (): void => {
+    inspecting = false;
+    pill.classList.remove("es-active");
+    highlight.style.display = "none";
+    label.style.display = "none";
+    lastTarget = null;
+  };
 
-    if (state.collapsed) {
-      if (state.dock === "left") {
-        overlay.classList.add("es-dock-left");
-        tab.classList.add("es-tab-left");
-        tab.style.top = `${state.y}px`;
-      } else if (state.dock === "right") {
-        overlay.classList.add("es-dock-right");
-        tab.classList.add("es-tab-right");
-        tab.style.top = `${state.y}px`;
-      } else {
-        overlay.classList.add("es-collapsed");
-        tab.classList.add("es-tab-right");
-        tab.style.top = `${state.y}px`;
-        state.dock = "right";
-        saveState(state);
-      }
-    } else {
-      tab.classList.add("es-tab-hidden");
-      if (state.dock === "left") tab.classList.add("es-tab-left");
-      else tab.classList.add("es-tab-right");
+  const showToast = (html: string, nearX: number, nearY: number): void => {
+    toast.innerHTML = html;
+    toast.classList.remove("es-visible");
+
+    // Position near the click
+    toast.style.left = `${nearX + 16}px`;
+    toast.style.top = `${nearY + 16}px`;
+
+    // Force reflow then show
+    void toast.offsetHeight;
+    toast.classList.add("es-visible");
+
+    // Clamp to viewport
+    const rect = toast.getBoundingClientRect();
+    if (rect.right > window.innerWidth - 8) {
+      toast.style.left = `${nearX - rect.width - 8}px`;
     }
+    if (rect.bottom > window.innerHeight - 8) {
+      toast.style.top = `${nearY - rect.height - 8}px`;
+    }
+
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      toast.classList.remove("es-visible");
+    }, 2500);
   };
-
-  const collapse = (): void => {
-    state.collapsed = true;
-    // Determine dock side based on current position
-    const midpoint = window.innerWidth / 2;
-    state.dock = state.x + 110 < midpoint ? "left" : "right";
-    saveState(state);
-    applyVisualState();
-  };
-
-  const expand = (): void => {
-    state.collapsed = false;
-    saveState(state);
-    applyVisualState();
-  };
-
-  applyVisualState();
-
-  // Tab click to expand
-  tab.addEventListener("click", expand);
-
-  // Collapse button
-  collapseBtn.addEventListener("click", collapse);
 
   // --- Drag logic ---
+
   let dragging = false;
+  let didDrag = false;
   let dragOffsetX = 0;
   let dragOffsetY = 0;
 
-  const isButton = (target: EventTarget | null): boolean =>
-    target === toggle || target === logBtn || target === collapseBtn;
-
-  const onMouseDown = (event: MouseEvent): void => {
-    if (isButton(event.target)) return;
+  pill.addEventListener("mousedown", (event: MouseEvent) => {
     dragging = true;
-    dragOffsetX = event.clientX - overlay.offsetLeft;
-    dragOffsetY = event.clientY - overlay.offsetTop;
+    didDrag = false;
+    dragOffsetX = event.clientX - pill.offsetLeft;
+    dragOffsetY = event.clientY - pill.offsetTop;
     event.preventDefault();
-  };
+  });
 
-  const onMouseMove = (event: MouseEvent): void => {
+  document.addEventListener("mousemove", (event: MouseEvent) => {
     if (!dragging) return;
-    const x = Math.max(0, Math.min(window.innerWidth - 100, event.clientX - dragOffsetX));
-    const y = Math.max(0, Math.min(window.innerHeight - 40, event.clientY - dragOffsetY));
-    overlay.style.left = `${x}px`;
-    overlay.style.top = `${y}px`;
+    didDrag = true;
+    const x = Math.max(0, Math.min(window.innerWidth - 36, event.clientX - dragOffsetX));
+    const y = Math.max(0, Math.min(window.innerHeight - 36, event.clientY - dragOffsetY));
+    pill.style.left = `${x}px`;
+    pill.style.top = `${y}px`;
     state.x = x;
     state.y = y;
+    saveState(state);
+  });
 
-    // Show dock hint — highlight the edge tab when near a side
-    tab.classList.remove("es-tab-hidden", "es-tab-left", "es-tab-right");
-    if (x <= DOCK_SNAP_DISTANCE) {
-      tab.classList.add("es-tab-left");
-      tab.style.top = `${y}px`;
-    } else if (x + overlay.offsetWidth >= window.innerWidth - DOCK_SNAP_DISTANCE) {
-      tab.classList.add("es-tab-right");
-      tab.style.top = `${y}px`;
-    } else {
-      tab.classList.add("es-tab-hidden", "es-tab-right");
-    }
-  };
-
-  const onMouseUp = (): void => {
+  document.addEventListener("mouseup", () => {
     if (!dragging) return;
     dragging = false;
+  });
 
-    // Snap to dock if near edge
-    if (state.x <= DOCK_SNAP_DISTANCE) {
-      state.dock = "left";
-      state.collapsed = true;
-      saveState(state);
-      applyVisualState();
-    } else if (state.x + overlay.offsetWidth >= window.innerWidth - DOCK_SNAP_DISTANCE) {
-      state.dock = "right";
-      state.collapsed = true;
-      saveState(state);
-      applyVisualState();
+  // Click pill to toggle inspect mode (only if not dragged)
+  pill.addEventListener("click", () => {
+    if (didDrag) return;
+    if (inspecting) {
+      deactivate();
     } else {
-      state.dock = "none";
-      saveState(state);
-      applyVisualState();
-    }
-  };
-
-  header.addEventListener("mousedown", onMouseDown);
-  document.addEventListener("mousemove", onMouseMove);
-  document.addEventListener("mouseup", onMouseUp);
-
-  // Toggle inspection
-  toggle.addEventListener("click", () => {
-    state.enabled = !state.enabled;
-    toggle.classList.toggle("es-on", state.enabled);
-    saveState(state);
-    if (state.enabled) {
-      tab.classList.add("es-active");
-    } else {
-      tab.classList.remove("es-active");
-      highlight.style.display = "none";
-      label.style.display = "none";
-      body.innerHTML = "";
+      activate();
     }
   });
 
-  // Log toggle
-  logBtn.addEventListener("click", () => {
-    state.logToConsole = !state.logToConsole;
-    logBtn.classList.toggle("es-on", state.logToConsole);
-    saveState(state);
-  });
+  // --- Hover inspection ---
 
-  // Hover inspection
   let pendingResolve: number | null = null;
   let lastTarget: Element | null = null;
 
-  const isOverlayElement = (element: Element): boolean =>
-    element.id === OVERLAY_ID ||
+  const isOwnElement = (element: Element): boolean =>
+    element.id === PILL_ID ||
     element.id === HIGHLIGHT_ID ||
     element.id === LABEL_ID ||
-    element.id === TAB_ID ||
-    element.closest(`#${OVERLAY_ID}`) !== null;
+    element.id === TOAST_ID;
 
   const updateHighlight = (target: Element): void => {
     const rect = target.getBoundingClientRect();
@@ -535,32 +312,28 @@ const init = (): void => {
     highlight.style.height = `${rect.height}px`;
   };
 
-  const updateLabel = (target: Element, text: string, mouseX: number, mouseY: number): void => {
+  const updateLabel = (text: string, mouseX: number, mouseY: number): void => {
     label.textContent = text;
     label.style.display = "block";
 
-    const labelRect = label.getBoundingClientRect();
-    let labelX = mouseX + 12;
-    let labelY = mouseY - labelRect.height - 8;
+    const rect = label.getBoundingClientRect();
+    let x = mouseX + 14;
+    let y = mouseY - rect.height - 10;
 
-    if (labelX + labelRect.width > window.innerWidth) {
-      labelX = mouseX - labelRect.width - 12;
-    }
-    if (labelY < 0) {
-      labelY = mouseY + 20;
-    }
+    if (x + rect.width > window.innerWidth - 8) x = mouseX - rect.width - 14;
+    if (y < 8) y = mouseY + 22;
 
-    label.style.left = `${labelX}px`;
-    label.style.top = `${labelY}px`;
+    label.style.left = `${x}px`;
+    label.style.top = `${y}px`;
   };
 
   document.addEventListener(
     "mousemove",
     (event: MouseEvent) => {
-      if (!state.enabled || dragging) return;
+      if (!inspecting || dragging) return;
 
       const target = document.elementFromPoint(event.clientX, event.clientY);
-      if (!target || isOverlayElement(target)) {
+      if (!target || isOwnElement(target)) {
         highlight.style.display = "none";
         label.style.display = "none";
         return;
@@ -569,87 +342,67 @@ const init = (): void => {
       updateHighlight(target);
 
       if (target === lastTarget) {
-        // Just update label position
         if (label.style.display !== "none") {
-          updateLabel(target, label.textContent ?? "", event.clientX, event.clientY);
+          updateLabel(label.textContent ?? "", event.clientX, event.clientY);
         }
         return;
       }
 
       lastTarget = target;
+      if (pendingResolve !== null) cancelAnimationFrame(pendingResolve);
 
-      if (pendingResolve !== null) {
-        cancelAnimationFrame(pendingResolve);
-      }
-
-      const mouseX = event.clientX;
-      const mouseY = event.clientY;
+      const mx = event.clientX;
+      const my = event.clientY;
 
       pendingResolve = requestAnimationFrame(() => {
         pendingResolve = null;
         resolveElementInfo(target).then((info) => {
           if (lastTarget !== target) return;
-
-          if (!state.collapsed) {
-            body.innerHTML = formatInfo(info);
-          }
-          updateLabel(target, formatShortLabel(info), mouseX, mouseY);
-
-          if (state.logToConsole) {
-            const logParts: string[] = [`<${info.tagName}>`];
-            if (info.componentName) logParts.push(`Component: ${info.componentName}`);
-            if (info.source) {
-              logParts.push(`Source: ${info.source.filePath}:${info.source.lineNumber ?? "?"}`);
-            }
-            if (info.stack.length > 1) {
-              logParts.push(`Stack:${info.stack.map(formatStackFrame).join("")}`);
-            }
-            console.log(
-              `%c[element-source]%c ${logParts.join(" | ")}`,
-              "color: #4caf50; font-weight: bold",
-              "color: inherit",
-            );
-            if (typeof console.groupCollapsed === "function") {
-              console.groupCollapsed("[element-source] Element details");
-              console.log("Element:", target);
-              console.log("Info:", info);
-              console.groupEnd();
-            }
-          }
+          updateLabel(formatShortLabel(info), mx, my);
         });
       });
     },
     { passive: true },
   );
 
-  // Click to copy source path
-  document.addEventListener("click", (event: MouseEvent) => {
-    if (!state.enabled) return;
+  // --- Click to select element ---
 
-    const target = document.elementFromPoint(event.clientX, event.clientY);
-    if (!target || isOverlayElement(target)) return;
+  document.addEventListener(
+    "click",
+    (event: MouseEvent) => {
+      if (!inspecting) return;
 
-    event.preventDefault();
-    event.stopPropagation();
+      const target = document.elementFromPoint(event.clientX, event.clientY);
+      if (!target || isOwnElement(target)) return;
 
-    resolveElementInfo(target).then((info) => {
-      if (!info.source) return;
+      event.preventDefault();
+      event.stopPropagation();
 
-      const location = info.source.lineNumber
-        ? `${info.source.filePath}:${info.source.lineNumber}`
-        : info.source.filePath;
+      const clickX = event.clientX;
+      const clickY = event.clientY;
 
-      navigator.clipboard.writeText(location).then(() => {
-        if (!state.collapsed) {
-          const original = body.innerHTML;
-          body.innerHTML = `<span style="color: #4caf50">Copied: ${escapeHtml(location)}</span>`;
-          setTimeout(() => {
-            body.innerHTML = original;
-          }, 1500);
+      deactivate();
+
+      resolveElementInfo(target).then((info) => {
+        let copied: string | null = null;
+        if (info.source) {
+          copied = info.source.lineNumber
+            ? `${info.source.filePath}:${info.source.lineNumber}`
+            : info.source.filePath;
+          navigator.clipboard.writeText(copied).catch(() => {});
         }
+        showToast(formatToast(info, copied), clickX, clickY);
       });
-    });
-  }, true);
+    },
+    true,
+  );
+
+  // Escape to cancel
+  document.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (event.key === "Escape" && inspecting) {
+      deactivate();
+    }
+  });
 };
 
 // Auto-init when DOM is ready
